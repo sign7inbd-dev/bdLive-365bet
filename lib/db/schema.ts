@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, numeric, integer, serial, varchar } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, decimal, integer, varchar } from 'drizzle-orm/pg-core'
 
 // --- Better Auth required tables -------------------------------------------
 // Column names are camelCase to match Better Auth's defaults. Do not rename.
@@ -9,6 +9,7 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
+  role: text('role').default('member'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
@@ -29,19 +30,16 @@ export const session = pgTable('session', {
 export const account = pgTable('account', {
   id: text('id').primaryKey(),
   accountId: text('accountId').notNull(),
-  providerId: text('providerId').notNull(),
+  provider: text('provider').notNull(),
+  providerAccountId: text('providerAccountId').notNull(),
+  refreshToken: text('refreshToken'),
+  accessToken: text('accessToken'),
+  expiresAt: timestamp('expiresAt'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
   userId: text('userId')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('accessToken'),
-  refreshToken: text('refreshToken'),
-  idToken: text('idToken'),
-  accessTokenExpiresAt: timestamp('accessTokenExpiresAt'),
-  refreshTokenExpiresAt: timestamp('refreshTokenExpiresAt'),
-  scope: text('scope'),
-  password: text('password'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
 export const verification = pgTable('verification', {
@@ -49,302 +47,257 @@ export const verification = pgTable('verification', {
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
   expiresAt: timestamp('expiresAt').notNull(),
-  createdAt: timestamp('createdAt').defaultNow(),
-  updatedAt: timestamp('updatedAt').defaultNow(),
-})
-
-// --- JCMM App Tables -------------------------------------------------------
-
-// Member/User Roles
-export const memberRole = pgTable('memberRole', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(),
-  roleType: text('roleType').notNull(), // 'admin', 'member', 'affiliate'
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-})
-
-// Member Groups
-export const memberGroup = pgTable('memberGroup', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin who created it
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Member Management
-export const members = pgTable('members', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // FK to user table
-  accountId: varchar('accountId', { length: 255 }).notNull().unique(),
-  username: varchar('username', { length: 255 }).notNull().unique(),
-  fullName: varchar('fullName', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull(),
-  phone: varchar('phone', { length: 20 }),
-  agentId: text('agentId'), // reference to affiliate/agent
-  groupId: integer('groupId'), // reference to memberGroup
-  status: varchar('status', { length: 50 }).notNull().default('active'), // active, inactive, suspended
-  balance: numeric('balance', { precision: 15, scale: 2 }).notNull().default('0'),
-  turnover: numeric('turnover', { precision: 15, scale: 2 }).notNull().default('0'),
-  registrationDate: timestamp('registrationDate').notNull().defaultNow(),
-  lastLogin: timestamp('lastLogin'),
-  ipAddress: varchar('ipAddress', { length: 50 }),
+// --- JCMM Platform Tables ---------------------------------------------------
+
+export const memberProfiles = pgTable('member_profiles', {
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  memberCode: varchar('memberCode', { length: 50 }).notNull().unique(),
+  referralCode: varchar('referralCode', { length: 50 }).unique(),
+  parentMemberId: text('parentMemberId').references(() => memberProfiles.id, { onDelete: 'setNull' }),
+  memberLevel: varchar('memberLevel', { length: 20 }).default('regular'),
+  accountStatus: varchar('accountStatus', { length: 20 }).default('active'),
+  phoneNumber: varchar('phoneNumber', { length: 20 }),
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  country: varchar('country', { length: 100 }),
+  totalBalance: decimal('totalBalance', { precision: 15, scale: 2 }).default('0'),
+  availableBalance: decimal('availableBalance', { precision: 15, scale: 2 }).default('0'),
+  totalDeposited: decimal('totalDeposited', { precision: 15, scale: 2 }).default('0'),
+  totalWithdrawn: decimal('totalWithdrawn', { precision: 15, scale: 2 }).default('0'),
+  totalBets: decimal('totalBets', { precision: 15, scale: 2 }).default('0'),
+  totalWinnings: decimal('totalWinnings', { precision: 15, scale: 2 }).default('0'),
+  lastLoginAt: timestamp('lastLoginAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Bank Management
-export const banks = pgTable('banks', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  bankName: varchar('bankName', { length: 255 }).notNull(),
-  bankCode: varchar('bankCode', { length: 50 }).notNull().unique(),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Bank Accounts
-export const bankAccounts = pgTable('bankAccounts', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  bankId: integer('bankId').notNull(), // reference to banks
-  accountName: varchar('accountName', { length: 255 }).notNull(),
-  accountNumber: varchar('accountNumber', { length: 100 }).notNull().unique(),
-  accountHolder: varchar('accountHolder', { length: 255 }).notNull(),
-  balance: numeric('balance', { precision: 15, scale: 2 }).notNull().default('0'),
-  threshold: numeric('threshold', { precision: 15, scale: 2 }).notNull().default('0'),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  pgOption: boolean('pgOption').notNull().default(false), // payment gateway
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Transactions
 export const transactions = pgTable('transactions', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin handling
-  memberId: integer('memberId').notNull(), // reference to members
-  transactionId: varchar('transactionId', { length: 100 }).notNull().unique(),
-  type: varchar('type', { length: 50 }).notNull(), // 'deposit', 'withdrawal', 'promotion', 'adjustment_in', 'adjustment_out', 'rebate'
-  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
-  channel: varchar('channel', { length: 50 }), // 'online_banking', 'atm_transfer', 'cash_deposit'
-  status: varchar('status', { length: 50 }).notNull().default('new_request'), // new_request, acknowledged, completed, rejected
-  bankAccountId: integer('bankAccountId'), // reference to bankAccounts
-  remark: text('remark'),
-  turnoverRequirement: numeric('turnoverRequirement', { precision: 15, scale: 2 }).default('0'),
-  currentRollover: numeric('currentRollover', { precision: 15, scale: 2 }).default('0'),
-  accumulateTurnover: boolean('accumulateTurnover').notNull().default(false),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Products
-export const products = pgTable('products', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  name: varchar('name', { length: 255 }).notNull(),
-  code: varchar('code', { length: 50 }).notNull().unique(),
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  memberId: text('memberId')
+    .notNull()
+    .references(() => memberProfiles.id, { onDelete: 'cascade' }),
+  type: varchar('type', { length: 20 }).notNull(),
+  transactionType: varchar('transactionType', { length: 50 }).notNull(),
+  amount: decimal('amount', { precision: 15, scale: 2 }).notNull(),
+  balanceBefore: decimal('balanceBefore', { precision: 15, scale: 2 }),
+  balanceAfter: decimal('balanceAfter', { precision: 15, scale: 2 }),
+  status: varchar('status', { length: 20 }).default('pending'),
+  paymentMethod: varchar('paymentMethod', { length: 50 }),
+  bankId: text('bankId'),
+  referenceNo: varchar('referenceNo', { length: 100 }),
   description: text('description'),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Promotions
-export const promotions = pgTable('promotions', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  type: varchar('type', { length: 50 }).notNull(), // 'deposit_bonus', 'welcome_bonus', 'refund', etc.
-  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
-  percentage: numeric('percentage', { precision: 5, scale: 2 }), // for percentage-based promotions
-  minDeposit: numeric('minDeposit', { precision: 15, scale: 2 }),
-  maxBonus: numeric('maxBonus', { precision: 15, scale: 2 }),
-  turnoverMultiplier: numeric('turnoverMultiplier', { precision: 5, scale: 2 }).default('1'),
-  startDate: timestamp('startDate').notNull(),
-  endDate: timestamp('endDate').notNull(),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Promotion Claims
-export const promotionClaims = pgTable('promotionClaims', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  memberId: integer('memberId').notNull(), // reference to members
-  promotionId: integer('promotionId').notNull(), // reference to promotions
-  bonusAmount: numeric('bonusAmount', { precision: 15, scale: 2 }).notNull(),
-  status: varchar('status', { length: 50 }).notNull().default('pending'), // pending, approved, rejected
-  claimedAt: timestamp('claimedAt').notNull().defaultNow(),
+  approvedBy: text('approvedBy'),
   approvedAt: timestamp('approvedAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Rebates
-export const rebates = pgTable('rebates', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  name: varchar('name', { length: 255 }).notNull(),
-  percentage: numeric('percentage', { precision: 5, scale: 2 }).notNull(),
-  description: text('description'),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
+export const bankAccounts = pgTable('bank_accounts', {
+  id: text('id').primaryKey(),
+  bankName: varchar('bankName', { length: 100 }).notNull(),
+  accountHolder: varchar('accountHolder', { length: 100 }).notNull(),
+  accountNumber: varchar('accountNumber', { length: 50 }).notNull().unique(),
+  bankCode: varchar('bankCode', { length: 20 }),
+  branchCode: varchar('branchCode', { length: 20 }),
+  accountType: varchar('accountType', { length: 50 }),
+  balance: decimal('balance', { precision: 15, scale: 2 }).default('0'),
+  dailyLimit: decimal('dailyLimit', { precision: 15, scale: 2 }),
+  monthlyLimit: decimal('monthlyLimit', { precision: 15, scale: 2 }),
+  status: varchar('status', { length: 20 }).default('active'),
+  isDefault: boolean('isDefault').default(false),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Member Rebate History
-export const memberRebateHistory = pgTable('memberRebateHistory', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  memberId: integer('memberId').notNull(), // reference to members
-  rebateId: integer('rebateId').notNull(), // reference to rebates
-  amount: numeric('amount', { precision: 15, scale: 2 }).notNull(),
-  period: varchar('period', { length: 50 }).notNull(), // 'daily', 'weekly', 'monthly'
-  status: varchar('status', { length: 50 }).notNull().default('calculated'), // calculated, approved, paid
-  calculatedAt: timestamp('calculatedAt').notNull().defaultNow(),
+export const memberBankAccounts = pgTable('member_bank_accounts', {
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  memberId: text('memberId')
+    .notNull()
+    .references(() => memberProfiles.id, { onDelete: 'cascade' }),
+  bankName: varchar('bankName', { length: 100 }).notNull(),
+  accountHolder: varchar('accountHolder', { length: 100 }).notNull(),
+  accountNumber: varchar('accountNumber', { length: 50 }).notNull(),
+  bankCode: varchar('bankCode', { length: 20 }),
+  ifscCode: varchar('ifscCode', { length: 20 }),
+  accountType: varchar('accountType', { length: 50 }),
+  status: varchar('status', { length: 20 }).default('active'),
+  isVerified: boolean('isVerified').default(false),
+  isDefault: boolean('isDefault').default(false),
+  verifiedAt: timestamp('verifiedAt'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const promotions = pgTable('promotions', {
+  id: text('id').primaryKey(),
+  promotionCode: varchar('promotionCode', { length: 50 }).notNull().unique(),
+  promotionName: varchar('promotionName', { length: 100 }).notNull(),
+  promotionType: varchar('promotionType', { length: 50 }),
+  description: text('description'),
+  percentage: decimal('percentage', { precision: 5, scale: 2 }),
+  fixedAmount: decimal('fixedAmount', { precision: 15, scale: 2 }),
+  minAmount: decimal('minAmount', { precision: 15, scale: 2 }),
+  maxAmount: decimal('maxAmount', { precision: 15, scale: 2 }),
+  startDate: timestamp('startDate').notNull(),
+  endDate: timestamp('endDate').notNull(),
+  usageLimit: integer('usageLimit'),
+  usageCount: integer('usageCount').default(0),
+  status: varchar('status', { length: 20 }).default('active'),
+  applicableFor: varchar('applicableFor', { length: 100 }),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const rebates = pgTable('rebates', {
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  memberId: text('memberId')
+    .notNull()
+    .references(() => memberProfiles.id, { onDelete: 'cascade' }),
+  rebateType: varchar('rebateType', { length: 50 }),
+  rebatePercentage: decimal('rebatePercentage', { precision: 5, scale: 2 }),
+  rebateAmount: decimal('rebateAmount', { precision: 15, scale: 2 }),
+  totalBets: decimal('totalBets', { precision: 15, scale: 2 }),
+  winLoss: decimal('winLoss', { precision: 15, scale: 2 }),
+  rebatePeriod: varchar('rebatePeriod', { length: 20 }),
+  status: varchar('status', { length: 20 }).default('pending'),
+  claimedAt: timestamp('claimedAt'),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const affiliateAccounts = pgTable('affiliate_accounts', {
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  affiliateCode: varchar('affiliateCode', { length: 50 }).notNull().unique(),
+  affiliateName: varchar('affiliateName', { length: 100 }).notNull(),
+  affiliateLevel: varchar('affiliateLevel', { length: 20 }).default('standard'),
+  commissionPercentage: decimal('commissionPercentage', { precision: 5, scale: 2 }),
+  totalReferrals: integer('totalReferrals').default(0),
+  totalCommission: decimal('totalCommission', { precision: 15, scale: 2 }).default('0'),
+  withdrawnCommission: decimal('withdrawnCommission', { precision: 15, scale: 2 }).default('0'),
+  pendingCommission: decimal('pendingCommission', { precision: 15, scale: 2 }).default('0'),
+  monthlyTarget: decimal('monthlyTarget', { precision: 15, scale: 2 }),
+  monthlyAchieved: decimal('monthlyAchieved', { precision: 15, scale: 2 }),
+  status: varchar('status', { length: 20 }).default('active'),
+  joinedAt: timestamp('joinedAt').notNull().defaultNow(),
+  createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
+})
+
+export const affiliateCommissions = pgTable('affiliate_commissions', {
+  id: text('id').primaryKey(),
+  affiliateId: text('affiliateId')
+    .notNull()
+    .references(() => affiliateAccounts.id, { onDelete: 'cascade' }),
+  memberId: text('memberId')
+    .notNull()
+    .references(() => memberProfiles.id, { onDelete: 'cascade' }),
+  commissionAmount: decimal('commissionAmount', { precision: 15, scale: 2 }).notNull(),
+  commissionType: varchar('commissionType', { length: 50 }),
+  betAmount: decimal('betAmount', { precision: 15, scale: 2 }),
+  winAmount: decimal('winAmount', { precision: 15, scale: 2 }),
+  status: varchar('status', { length: 20 }).default('pending'),
   approvedAt: timestamp('approvedAt'),
   paidAt: timestamp('paidAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
+  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Affiliates/Agents
-export const affiliates = pgTable('affiliates', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // FK to user table
-  affiliateCode: varchar('affiliateCode', { length: 100 }).notNull().unique(),
-  accountId: varchar('accountId', { length: 255 }).notNull().unique(),
-  name: varchar('name', { length: 255 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull(),
-  phone: varchar('phone', { length: 20 }),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  commissionPercentage: numeric('commissionPercentage', { precision: 5, scale: 2 }).notNull().default('0'),
-  totalReferrals: integer('totalReferrals').notNull().default('0'),
-  totalCommission: numeric('totalCommission', { precision: 15, scale: 2 }).notNull().default('0'),
+export const sportsEvents = pgTable('sports_events', {
+  id: text('id').primaryKey(),
+  eventName: varchar('eventName', { length: 255 }).notNull(),
+  eventType: varchar('eventType', { length: 50 }),
+  sportType: varchar('sportType', { length: 50 }),
+  homeTeam: varchar('homeTeam', { length: 100 }),
+  awayTeam: varchar('awayTeam', { length: 100 }),
+  eventDate: timestamp('eventDate').notNull(),
+  eventStatus: varchar('eventStatus', { length: 20 }).default('upcoming'),
+  result: varchar('result', { length: 50 }),
+  odds: decimal('odds', { precision: 5, scale: 2 }),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Affiliate Links
-export const affiliateLinks = pgTable('affiliateLinks', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  affiliateId: integer('affiliateId').notNull(), // reference to affiliates
-  linkType: varchar('linkType', { length: 50 }).notNull(), // 'individual_link', 'subdomain_link'
-  linkUrl: text('linkUrl').notNull(),
-  clicks: integer('clicks').notNull().default('0'),
-  conversions: integer('conversions').notNull().default('0'),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
+export const bettingSlips = pgTable('betting_slips', {
+  id: text('id').primaryKey(),
+  userId: text('userId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  memberId: text('memberId')
+    .notNull()
+    .references(() => memberProfiles.id, { onDelete: 'cascade' }),
+  slipNumber: varchar('slipNumber', { length: 50 }).notNull().unique(),
+  betAmount: decimal('betAmount', { precision: 15, scale: 2 }).notNull(),
+  totalOdds: decimal('totalOdds', { precision: 10, scale: 2 }),
+  potentialWinning: decimal('potentialWinning', { precision: 15, scale: 2 }),
+  actualWinning: decimal('actualWinning', { precision: 15, scale: 2 }),
+  betType: varchar('betType', { length: 50 }),
+  betStatus: varchar('betStatus', { length: 20 }).default('pending'),
+  settledAt: timestamp('settledAt'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
   updatedAt: timestamp('updatedAt').notNull().defaultNow(),
 })
 
-// Admin Roles
-export const adminRoles = pgTable('adminRoles', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  roleName: varchar('roleName', { length: 255 }).notNull(),
-  permissions: text('permissions'), // JSON string of permissions
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Reports/Statistics - Game
-export const gameStatistics = pgTable('gameStatistics', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  date: timestamp('date').notNull().defaultNow(),
-  totalWagers: numeric('totalWagers', { precision: 15, scale: 2 }).notNull().default('0'),
-  totalWins: numeric('totalWins', { precision: 15, scale: 2 }).notNull().default('0'),
-  totalLoses: numeric('totalLoses', { precision: 15, scale: 2 }).notNull().default('0'),
-  netWinLose: numeric('netWinLose', { precision: 15, scale: 2 }).notNull().default('0'),
+export const betSelections = pgTable('bet_selections', {
+  id: text('id').primaryKey(),
+  bettingSlipId: text('bettingSlipId')
+    .notNull()
+    .references(() => bettingSlips.id, { onDelete: 'cascade' }),
+  eventId: text('eventId')
+    .notNull()
+    .references(() => sportsEvents.id, { onDelete: 'cascade' }),
+  selectedOption: varchar('selectedOption', { length: 100 }),
+  odds: decimal('odds', { precision: 5, scale: 2 }).notNull(),
+  result: varchar('result', { length: 50 }),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
-// Website Statistics
-export const websiteStatistics = pgTable('websiteStatistics', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  date: timestamp('date').notNull().defaultNow(),
-  totalMembers: integer('totalMembers').notNull().default('0'),
-  activeMembers: integer('activeMembers').notNull().default('0'),
-  totalDeposits: numeric('totalDeposits', { precision: 15, scale: 2 }).notNull().default('0'),
-  totalWithdrawals: numeric('totalWithdrawals', { precision: 15, scale: 2 }).notNull().default('0'),
-  totalBonuses: numeric('totalBonuses', { precision: 15, scale: 2 }).notNull().default('0'),
+export const adminLogs = pgTable('admin_logs', {
+  id: text('id').primaryKey(),
+  adminId: text('adminId')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  action: varchar('action', { length: 100 }).notNull(),
+  entityType: varchar('entityType', { length: 50 }),
+  entityId: text('entityId'),
+  changes: text('changes'),
+  ipAddress: text('ipAddress'),
+  userAgent: text('userAgent'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
 
-// CMS - Banners
-export const banners = pgTable('banners', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  title: varchar('title', { length: 255 }).notNull(),
-  description: text('description'),
-  imageUrl: text('imageUrl'),
-  linkUrl: text('linkUrl'),
-  position: varchar('position', { length: 50 }), // 'homepage', 'sidebar', etc.
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  startDate: timestamp('startDate'),
-  endDate: timestamp('endDate'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// CMS - Announcements
-export const announcements = pgTable('announcements', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  title: varchar('title', { length: 255 }).notNull(),
-  content: text('content').notNull(),
-  type: varchar('type', { length: 50 }).notNull(), // 'popup', 'banner', 'notification'
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  publishedAt: timestamp('publishedAt'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// CMS - Pages/Content
-export const cmsPages = pgTable('cmsPages', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  slug: varchar('slug', { length: 255 }).notNull().unique(),
-  title: varchar('title', { length: 255 }).notNull(),
-  content: text('content').notNull(),
-  metaDescription: text('metaDescription'),
-  metaKeywords: text('metaKeywords'),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// SEO Settings
-export const seoSettings = pgTable('seoSettings', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin
-  pageSlug: varchar('pageSlug', { length: 255 }),
-  title: varchar('title', { length: 255 }).notNull(),
-  description: text('description').notNull(),
-  keywords: text('keywords'),
-  ogImage: text('ogImage'),
-  ogTitle: text('ogTitle'),
-  ogDescription: text('ogDescription'),
-  createdAt: timestamp('createdAt').notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt').notNull().defaultNow(),
-})
-
-// Audit Log
-export const auditLog = pgTable('auditLog', {
-  id: serial('id').primaryKey(),
-  userId: text('userId').notNull(), // admin who performed the action
-  action: varchar('action', { length: 255 }).notNull(),
-  table: varchar('table', { length: 255 }).notNull(),
-  recordId: varchar('recordId', { length: 255 }),
-  oldValue: text('oldValue'),
-  newValue: text('newValue'),
-  ipAddress: varchar('ipAddress', { length: 50 }),
+export const reports = pgTable('reports', {
+  id: text('id').primaryKey(),
+  reportType: varchar('reportType', { length: 50 }).notNull(),
+  reportDate: timestamp('reportDate').notNull(),
+  totalMembers: integer('totalMembers'),
+  totalDeposits: decimal('totalDeposits', { precision: 15, scale: 2 }),
+  totalWithdrawals: decimal('totalWithdrawals', { precision: 15, scale: 2 }),
+  totalBets: decimal('totalBets', { precision: 15, scale: 2 }),
+  totalWinnings: decimal('totalWinnings', { precision: 15, scale: 2 }),
+  totalRebates: decimal('totalRebates', { precision: 15, scale: 2 }),
+  totalAffiliateCommissions: decimal('totalAffiliateCommissions', { precision: 15, scale: 2 }),
+  platformProfit: decimal('platformProfit', { precision: 15, scale: 2 }),
+  data: text('data'),
   createdAt: timestamp('createdAt').notNull().defaultNow(),
 })
